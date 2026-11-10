@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),E=require('../dist/engine.js');
+const p=(c)=>Array.from({length:16},(_,i)=>i===c?1:0);
+const v=(windows,offset=0)=>({duration_s:10,offset_s:offset,windows});
+const r={schema_version:1,duration_s:10,views:{dashboard:v([{start_s:0,end_s:10,probabilities:p(0)}]),rearview:v([{start_s:0,end_s:5,probabilities:p(1)},{start_s:5,end_s:10,probabilities:p(2)}])}};
+E.validate(r);assert.equal(E.rank(E.at(r,2))[0].id,0);assert.equal(E.at(r,2)[1],.5);
+assert.equal(E.at(r,10),null,'end-exclusive intervals');
+assert.equal(E.intervals(r,'fused',.6).length,0,'threshold excludes low-score predictions');
+assert.equal(E.intervals(r,'dashboard',0,true).length,0,'normal filter');
+const shifted={schema_version:1,duration_s:8,reference_start_s:1,views:{dashboard:r.views.dashboard,rearview:v([{start_s:0,end_s:4,probabilities:p(3)},{start_s:4,end_s:10,probabilities:p(4)}],2)}};
+assert.equal(E.rank(E.at(shifted,2.1,'rearview'))[0].id,4,'camera time = reference + offset');
+assert.equal(E.at(shifted,.5),null,'unsupported reference start');
+const broken=JSON.parse(JSON.stringify(r));broken.views.dashboard.windows[0].probabilities[0]=NaN;assert.throws(()=>E.validate(broken));
+const absent={schema_version:1,duration_s:10,views:{dashboard:r.views.dashboard,rearview:v([{start_s:3,end_s:8,probabilities:p(1)}])}};
+assert.equal(E.at(absent,1),null,'missing camera is never silently dropped from fusion');
+console.log('Legacy engine: probability fusion, camera offsets, missing coverage, filters and import rejection passed.');

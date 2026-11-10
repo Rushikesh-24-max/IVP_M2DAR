@@ -1,0 +1,8 @@
+{
+  "kind": "generic_action_pretraining",
+  "source_url": "REPLACE with the verified source of the generic pretrained checkpoint",
+  "training_datasets": ["REPLACE with documented pretraining datasets"],
+  "aicity_or_syndd2_exposure": false,
+  "sha256": "REPLACE with the SHA256 of the original downloaded checkpoint",
+  "evidence": "REPLACE with a source link or audit note supporting the training history; a filename alone is not evidence"
+}

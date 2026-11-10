@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.env
+.venv*/
+.runtime/
+prepared/
+runs/
+checkpoints/
+*.pth
+*.pyth
+*.pt
+*.mp4
+*.mov
+*.webm
+*.zip
+*.tar
+*.tar.gz

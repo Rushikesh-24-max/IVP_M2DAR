@@ -1,0 +1,195 @@
+--- a/slowfast/datasets/aicity.py
++++ b/slowfast/datasets/aicity.py
+@@ -176,7 +176,7 @@
+         if isinstance(index, tuple):
+             index, short_cycle_idx = index
+ 
+-        if self.mode in ["train", "val"]:
++        if self.mode in ["train"]:
+             # -1 indicates random sampling.
+             temporal_sample_index = -1
+             spatial_sample_index = -1
+@@ -200,6 +200,12 @@
+                         / self.cfg.MULTIGRID.DEFAULT_S
+                     )
+                 )
++        elif self.mode == "val":
++            # Prepared-data protocol: one center time window and center crop.
++            temporal_sample_index = 0
++            spatial_sample_index = 1
++            min_scale = max_scale = self.cfg.DATA.TRAIN_JITTER_SCALES[0]
++            crop_size = self.cfg.DATA.TEST_CROP_SIZE
+         elif self.mode in ["test"]:
+             temporal_sample_index = (
+                     self._spatial_temporal_idx[index]
+@@ -256,10 +262,7 @@
+                         index, self._path_to_videos[index], i_try
+                     )
+                 )
+-                if self.mode not in ["test"] and i_try > self._num_retries // 2:
+-                    # let's try another one
+-                    index = random.randint(0, len(self._path_to_videos) - 1)
+-                continue
++                raise RuntimeError("Cannot decode prepared clip: " + self._path_to_videos[index])
+ 
+             # Decode video. Meta info is used to perform selective decoding.
+             # RGB frames
+@@ -268,12 +271,12 @@
+                 sampling_rate,
+                 self.cfg.DATA.NUM_FRAMES,
+                 temporal_sample_index,
+-                self.cfg.TEST.NUM_ENSEMBLE_VIEWS,
++                1 if self.mode == "val" else self.cfg.TEST.NUM_ENSEMBLE_VIEWS,
+                 video_meta=self._video_meta[index],
+                 target_fps=self.cfg.DATA.TARGET_FPS,
+                 backend=self.cfg.DATA.DECODING_BACKEND,
+                 max_spatial_scale=min_scale,
+-                use_offset=self.cfg.DATA.USE_OFFSET_SAMPLING,
++                use_offset=True if self.mode == "val" else self.cfg.DATA.USE_OFFSET_SAMPLING,
+             )
+ 
+             # If decoding failed (wrong format, video is too short, and etc),
+@@ -284,10 +287,7 @@
+                         index, self._path_to_videos[index], i_try
+                     )
+                 )
+-                if self.mode not in ["test"] and i_try > self._num_retries // 2:
+-                    # let's try another one
+-                    index = random.randint(0, len(self._path_to_videos) - 1)
+-                continue
++                raise RuntimeError("Cannot decode prepared clip: " + self._path_to_videos[index])
+ 
+             if self.aug:
+                 # augment the frames
+--- a/slowfast/models/head_helper.py
++++ b/slowfast/models/head_helper.py
+@@ -5,7 +5,6 @@
+ import torch
+ import torch.nn as nn
+ from slowfast.models.common import Mlp
+-from detectron2.layers import ROIAlign
+ 
+ from functools import partial
+ 
+@@ -64,6 +63,8 @@
+             correct neighbors; It makes negligible differences to the model's
+             performance if ROIAlign is used together with conv layers.
+         """
++        # Detection-only dependency; MViT classification never instantiates this head.
++        from detectron2.layers import ROIAlign
+         super(ResNetRoIHead, self).__init__()
+         assert (
+             len({len(pool_size), len(dim_in)}) == 1
+--- a/tools/train_net.py
++++ b/tools/train_net.py
+@@ -3,6 +3,7 @@
+ """Train a video classification model."""
+ 
+ import warnings
++import random
+ 
+ warnings.filterwarnings("ignore")
+ 
+@@ -535,6 +536,9 @@
+                     global_step=train_size * (cur_epoch + 1),  # end of an epoch
+                 )
+ 
++    if cfg.TRAIN.DATASET == "aicity" and cfg.NUM_GPUS == 1:
++        from project_hooks import record_validation
++        record_validation(model, val_meter, cur_epoch, cfg, writer)
+     val_meter.reset()
+ 
+     return mAP
+@@ -638,6 +642,7 @@
+     # what is torch.distributed.new_group() use for?
+     du.init_distributed_training(cfg)
+     # Set random seed from configs.
++    random.seed(cfg.RNG_SEED)
+     np.random.seed(cfg.RNG_SEED)  # same seed under the same script
+     torch.manual_seed(cfg.RNG_SEED)
+ 
+@@ -732,6 +737,11 @@
+         print("mAP/Top5_err: %s" % mAP)
+ 
+     for cur_epoch in range(start_epoch, cfg.SOLVER.MAX_EPOCH):
++        # Epoch reseeding makes an epoch-boundary resume reproducible.
++        random.seed(cfg.RNG_SEED + cur_epoch)
++        np.random.seed(cfg.RNG_SEED + cur_epoch)
++        torch.manual_seed(cfg.RNG_SEED + cur_epoch)
++        torch.cuda.manual_seed_all(cfg.RNG_SEED + cur_epoch)
+ 
+         # Shuffle the dataset.
+         # the dataloader could have a DistributedSampler,
+--- a/slowfast/datasets/multigrid_helper.py
++++ b/slowfast/datasets/multigrid_helper.py
+@@ -10,7 +10,7 @@
+ TORCH_MAJOR = int(torch.__version__.split(".")[0])
+ TORCH_MINOR = int(torch.__version__.split(".")[1])
+ 
+-if TORCH_MAJOR >= 1 and TORCH_MINOR >= 8:
++if (TORCH_MAJOR, TORCH_MINOR) >= (1, 8):
+     _int_classes = int
+ else:
+     from torch._six import int_classes as _int_classes
+--- a/slowfast/utils/checkpoint.py
++++ b/slowfast/utils/checkpoint.py
+@@ -288,7 +288,7 @@
+     else:
+         # Load the checkpoint on CPU to avoid GPU mem spike.
+         with pathmgr.open(path_to_checkpoint, "rb") as f:
+-            checkpoint = torch.load(f, map_location="cpu")
++            checkpoint = torch.load(f, map_location="cpu", weights_only=True)
+         model_state_dict_3d = (
+             model.module.state_dict() if data_parallel else model.state_dict()
+         )
+--- a/slowfast/models/attention.py
++++ b/slowfast/models/attention.py
+@@ -7,6 +7,7 @@
+ import torch.nn as nn
+ 
+ from slowfast.models.common import DropPath, Mlp
++from slowfast.models.memory_attention import pooled_scaled_attention
+ 
+ 
+ def attention_pool(tensor, pool, thw_shape, has_cls_embed=True, norm=None, pool2d=None):
+@@ -263,16 +264,14 @@
+         # each token and head in query attends each token and head in key
+         # q [B, num_head, new_thw, dim] -> k [B, num_head, dim, new_thw']
+         # new_thw and new_thw' could be different
+-        attn = (q @ k.transpose(-2, -1)) * self.scale
+-        # attn: [B, num_head, new_thw, new_thw']
+-        attn = attn.softmax(dim=-1)
++        attended = pooled_scaled_attention(q, k, v, self.scale)
+ 
+         N = q.shape[2]
+         # attn [B, num_head, new_thw, new_thw'] -> v [B, num_head, new_thw', dim]
+         # -> [B, num_head, new_thw, dim]
+         # -> [B, new_thw (out_shape), num_head*dim]
+         # so we have attention from each token in the query to all of value's token,
+-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
++        x = attended.transpose(1, 2).reshape(B, N, C)
+         if self.use_query_residual_pool:
+             # q [B, num_head, new_thw, dim]
+             x = x + q.transpose(1, 2).reshape(B, N, C)  # this does not add to FLOPs?
+--- /dev/null
++++ b/slowfast/models/memory_attention.py
+@@ -0,0 +1,19 @@
++"""Scaled attention with the original equation and bounded-memory CUDA kernels."""
++import torch
++import torch.nn.functional as F
++from torch.nn.attention import SDPBackend, sdpa_kernel
++
++
++def pooled_scaled_attention(q, k, v, scale):
++    # The released model applies no attention-probability dropout or causal mask.
++    if not q.is_cuda:
++        return F.scaled_dot_product_attention(q, k, v, dropout_p=0.0, is_causal=False, scale=scale)
++    if torch.is_autocast_enabled():
++        dtype = torch.get_autocast_gpu_dtype()
++        q, k, v = (tensor.to(dtype=dtype).contiguous() for tensor in (q, k, v))
++    else:
++        q, k, v = (tensor.contiguous() for tensor in (q, k, v))
++    # Fail clearly when no fused kernel is available; never silently recreate
++    # the large Q-by-K matrix with the math backend on a constrained GPU.
++    with sdpa_kernel([SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION]):
++        return F.scaled_dot_product_attention(q, k, v, dropout_p=0.0, is_causal=False, scale=scale)

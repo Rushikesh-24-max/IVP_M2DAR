@@ -1,0 +1,11 @@
+{
+  "dataset_fingerprint": "08e2a5fa03d88f54600ad2e696f039bf3297cbae2b01c5ba273a54b8e2b16409",
+  "config_sha256": "62370314538b38820ea516e647c9c5e271d9070b8b27b1f1c46b817f91aa1df8",
+  "resolved_config_sha256": "22251fda24642dd85d81b1a7885a147376e74302a282c17e218cbb3b8e5d1168",
+  "application_sha256": "5849de29396a9f334e6b6e8f76ce534d89f6b74009515f8934c96e6d67d3084f",
+  "source_lock_sha256": "dc661ec1af9077855af89cca59a5aaf255910f24a5c3a02eb7ae08a08bad532c",
+  "initializer_sha256": "b271efcd6892cf70157d2020c7f8e42e3f2f1631aed4b1707210d133ff9ecf9f",
+  "validation_clips": 456,
+  "keep_last_checkpoints": 2,
+  "gpu_memory_fraction": 0.2
+}

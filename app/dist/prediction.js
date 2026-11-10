@@ -1,0 +1,10 @@
+(function(root){'use strict';
+ const CHECKPOINT='f2a254dca49cd5156b344d3abff40e21061bb3fc4e605ba1728925d2d3db3115';
+ function probabilities(p){if(!Array.isArray(p)||p.length!==16||p.some(x=>!Number.isFinite(x)||x<0||x>1)||Math.abs(p.reduce((a,b)=>a+b,0)-1)>.003)throw Error('Invalid 16-class model scores.');return p;}
+ function rank(p){return p?probabilities(p).map((score,id)=>({id,score})).sort((a,b)=>b.score-a.score||a.id-b.id):[];}
+ function validateResult(r){if(!r||r.schema_version!==1||r.checkpoint_sha256!==CHECKPOINT||!r.views||Object.keys(r.views).length!==1)throw Error('Expected a single-video result from the frozen epoch-170 model.');const [view]=Object.keys(r.views);if(!['dashboard','rearview','right_side_window'].includes(view))throw Error('Unknown camera viewpoint.');const v=r.views[view];if(!Number.isFinite(v.duration_s)||v.duration_s<=0||v.duration_s>300.1||v.offset_s!==0||!Array.isArray(v.windows)||!v.windows.length||v.windows.length>10000)throw Error('Invalid single-video timing.');for(const w of v.windows){if(!Number.isFinite(w.start_s)||!Number.isFinite(w.end_s)||w.start_s<0||w.end_s<=w.start_s||w.end_s>v.duration_s+.01)throw Error('Invalid prediction window.');probabilities(w.probabilities);}return r;}
+ function at(r,t){const v=Object.values(r.views)[0],ws=v.windows.filter(w=>w.start_s<=t&&t<w.end_s);return ws.length?Array.from({length:16},(_,c)=>ws.reduce((a,w)=>a+w.probabilities[c],0)/ws.length):null;}
+ function clampTime(t,duration){return Number.isFinite(duration)&&duration>0?Math.max(0,Math.min(duration-.000001,Number.isFinite(t)?t:0)):0;}
+ function slotTime(r,t,direction,duration){const starts=r&&r.inference_mode!=='clip_center'?[...new Set(Object.values(r.views)[0].windows.map(w=>w.start_s))].sort((a,b)=>a-b):[];const next=direction>0?starts.find(x=>x>t+.00001):starts.filter(x=>x<t-.00001).at(-1);return clampTime(next??(starts.length?(direction>0?duration:0):t+direction*.5),duration);}
+ const api={CHECKPOINT,probabilities,rank,validateResult,at,clampTime,slotTime};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.M2DARPrediction=api;
+})(typeof window!=='undefined'?window:globalThis);
