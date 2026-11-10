@@ -15,3 +15,7 @@ The vendored M2DAR code retains Purdue Digital Twin Lab's [MIT notice](training/
 The public snapshot omits the upstream documentation figures. The source check still validates the frozen runtime files and checks the figure hashes if those files are present.
 
 [Download the aggregate results and sanitized training configuration](https://drive.google.com/file/d/17DAOs2VW3KfsGy1VNghsQ2UOdH-R7fds/view).
+
+- [Experiment and metrics guide](docs/EXPERIMENT.md)
+- [Restore the frozen model on another GPU host](docs/RESTORE.md)
+- [Project Drive folder with the checkpoint restore kit](https://drive.google.com/drive/folders/1bsEZWij3E3UBur9wAQjTdPJvRDZD1UaB)

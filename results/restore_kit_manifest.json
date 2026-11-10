@@ -1,0 +1,17 @@
+{
+  "file": "IVP_M2DAR_epoch170_restore_kit.zip",
+  "bytes": 131612054,
+  "sha256": "686e01da69a7d63df9428e00162eeb6644da30719ef23684dbd917d950448830",
+  "parts": [
+    {
+      "name": "IVP_M2DAR_epoch170_restore_kit.zip.part1",
+      "bytes": 73400320,
+      "sha256": "f6f78fefb34c3a5e781918167f3d330308c085b62ceee433c51935c9c3e3bd1c"
+    },
+    {
+      "name": "IVP_M2DAR_epoch170_restore_kit.zip.part2",
+      "bytes": 58211734,
+      "sha256": "5eb60b299f708c47d4943b5ed4ba7bc7b61bf1914fef345ff8a3fc36a82350cf"
+    }
+  ]
+}
